@@ -77,7 +77,7 @@ def ai_review(text):
 
 if uploaded_file:
     if st.button("Generate Review Report"):
-    with st.spinner("AI is reviewing the document..."):
-        report = ai_review(text)
-        st.subheader("AI Review Report")
-        st.text_area("", report, height=500)
+        with st.spinner("AI is reviewing the document..."):
+            report = ai_review(text)
+            st.subheader("AI Review Report")
+            st.text_area("", report, height=500)
