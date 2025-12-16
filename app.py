@@ -22,19 +22,28 @@ def read_text(file):
         return text
 
     if file.type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
-        from docx import Document
-        doc = Document(file)
-        text = ""
-        for i, para in enumerate(doc.paragraphs):
-            text += para.text + "\n"
-        return text
+
+from docx import Document
+
+def extract_text_from_word(uploaded_file):
+    doc = Document(uploaded_file)
+    full_text = []
+    for para in doc.paragraphs:
+        full_text.append(para.text)
+    return "\n".join(full_text)
+
         
 text = "This is a simple test document with typo and English word like machine learning."
 if uploaded_file:
-    text = read_text(uploaded_file)
-    st.subheader("Extracted Text (Preview)")
-    st.text_area("", text[:3000], height=300)
-  
+    text = extract_text_from_word(uploaded_file)
+    st.subheader("DEBUG: Extracted Text Preview")
+    st.text_area("", text[:3000], height=200)
+    st.write("Total characters:", len(text))
+
+chunks = split_text(text)
+st.write("Total chunks:", len(chunks))
+st.write("First chunk length:", len(chunks[0]))
+
 from openai import OpenAI
 client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
@@ -81,26 +90,24 @@ def ai_review(text):
     reports = []
 
     for i, chunk in enumerate(chunks):
-        for attempt in range(3):  # retry max 3x
-            try:
-                response = client.chat.completions.create(
-                    model="gpt-4.1-mini",
-                    messages=[
-                        {"role": "system", "content": REVIEW_PROMPT},
-                        {"role": "user", "content": chunk}
-                    ]
-                )
+        if not chunk.strip():
+            reports.append(f"=== CHUNK {i+1} EMPTY ===")
+            continue
 
-                reports.append(
-                    f"=== CHUNK {i+1} ===\n" +
-                    response.choices[0].message.content
-                )
+        response = client.chat.completions.create(
+            model="gpt-4.1-mini",
+            messages=[
+                {"role": "system", "content": REVIEW_PROMPT},
+                {"role": "user", "content": chunk}
+            ]
+        )
 
-                time.sleep(3)  # ⬅️ LEBIH LAMA
-                break
+        content = response.choices[0].message.content
 
-            except RateLimitError:
-                time.sleep(5 + attempt * 5)
+        if not content:
+            reports.append(f"=== CHUNK {i+1} RETURNED EMPTY ===")
+        else:
+            reports.append(f"=== CHUNK {i+1} ===\n{content}")
 
     return "\n\n".join(reports)
 
