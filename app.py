@@ -98,41 +98,15 @@ For each issue:
 from openai import RateLimitError
 
 def ai_review(text):
-    chunks = split_text(text, max_chars=4000)  # ⬅️ lebih besar
-    reports = []
-
-    for i, chunk in enumerate(chunks):
-        if not chunk.strip():
-            continue
-
-        retries = 3
-        for attempt in range(retries):
-            try:
-                response = client.chat.completions.create(
-                    model="gpt-4o-mini",  # ⬅️ LEBIH STABIL
-                    messages=[
-                        {"role": "system", "content": REVIEW_PROMPT},
-                        {"role": "user", "content": chunk}
-                    ],
-                    temperature=0.2
-                )
-
-                content = response.choices[0].message.content
-                reports.append(f"=== CHUNK {i+1} ===\n{content}")
-                break
-
-            except RateLimitError:
-                if attempt < retries - 1:
-                    wait_time = (attempt + 1) * 5
-                    st.warning(f"Rate limit hit. Retrying in {wait_time}s...")
-                    time.sleep(wait_time)
-                else:
-                    reports.append(f"=== CHUNK {i+1} FAILED DUE TO RATE LIMIT ===")
-
-        time.sleep(2)  # ⬅️ WAJIB di Streamlit Cloud
-
-    return "\n\n".join(reports)
-
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": REVIEW_PROMPT},
+            {"role": "user", "content": text[:8000]}  # LIMIT
+        ],
+        temperature=0.2
+    )
+    return response.choices[0].message.content
 
 # =========================
 # UI FLOW
