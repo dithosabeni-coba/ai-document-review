@@ -37,6 +37,19 @@ if uploaded_file:
 from openai import OpenAI
 client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
+def split_text(text, max_chars=4000):
+    chunks = []
+    current = ""
+    for line in text.split("\n"):
+        if len(current) + len(line) < max_chars:
+            current += line + "\n"
+        else:
+            chunks.append(current)
+            current = line + "\n"
+    if current:
+        chunks.append(current)
+    return chunks
+
 REVIEW_PROMPT = """
 You are a professional document reviewer.
 
@@ -59,21 +72,26 @@ For each issue:
 - Be concise and professional
 """
 
+import time
+
 def ai_review(text):
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {
-                "role": "system",
-                "content": REVIEW_PROMPT
-            },
-            {
-                "role": "user",
-                "content": text[:12000]
-            }
-        ]
-    )
-    return response.choices[0].message.content
+    chunks = split_text(text)
+    reports = []
+
+    for i, chunk in enumerate(chunks):
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": REVIEW_PROMPT},
+                {"role": "user", "content": chunk}
+            ]
+        )
+
+        reports.append(f"=== CHUNK {i+1} ===\n" + response.choices[0].message.content)
+
+        time.sleep(1.2)  # ⬅️ WAJIB supaya tidak rate limit
+
+    return "\n\n".join(reports)
 
 if uploaded_file:
     if st.button("Generate Review Report"):
