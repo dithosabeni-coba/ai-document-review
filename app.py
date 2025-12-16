@@ -28,7 +28,8 @@ def read_text(file):
         for i, para in enumerate(doc.paragraphs):
             text += para.text + "\n"
         return text
-
+        
+text = "This is a simple test document with typo and English word like machine learning."
 if uploaded_file:
     text = read_text(uploaded_file)
     st.subheader("Extracted Text (Preview)")
@@ -37,7 +38,7 @@ if uploaded_file:
 from openai import OpenAI
 client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
-def split_text(text, max_chars=4000):
+def split_text(text, max_chars=2000):
     chunks = []
     current = ""
     for line in text.split("\n"):
@@ -73,25 +74,36 @@ For each issue:
 """
 
 import time
+from openai import RateLimitError
 
 def ai_review(text):
     chunks = split_text(text)
     reports = []
 
     for i, chunk in enumerate(chunks):
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": REVIEW_PROMPT},
-                {"role": "user", "content": chunk}
-            ]
-        )
+        for attempt in range(3):  # retry max 3x
+            try:
+                response = client.chat.completions.create(
+                    model="gpt-4.1-mini",
+                    messages=[
+                        {"role": "system", "content": REVIEW_PROMPT},
+                        {"role": "user", "content": chunk}
+                    ]
+                )
 
-        reports.append(f"=== CHUNK {i+1} ===\n" + response.choices[0].message.content)
+                reports.append(
+                    f"=== CHUNK {i+1} ===\n" +
+                    response.choices[0].message.content
+                )
 
-        time.sleep(1.2)  # ⬅️ WAJIB supaya tidak rate limit
+                time.sleep(3)  # ⬅️ LEBIH LAMA
+                break
+
+            except RateLimitError:
+                time.sleep(5 + attempt * 5)
 
     return "\n\n".join(reports)
+
 
 if uploaded_file:
     if st.button("Generate Review Report"):
