@@ -1,4 +1,13 @@
 import streamlit as st
+import time
+from docx import Document
+from pypdf import PdfReader
+from openai import OpenAI
+
+# =========================
+# CONFIG & CLIENT
+# =========================
+client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
 st.title("AI Document Reviewer")
 st.write("Upload document → Get review report (no auto-fix)")
@@ -8,58 +17,59 @@ uploaded_file = st.file_uploader(
     type=["txt", "pdf", "docx"]
 )
 
+# =========================
+# TEXT EXTRACTORS
+# =========================
+def extract_text_from_txt(file):
+    return file.read().decode("utf-8")
+
+def extract_text_from_pdf(file):
+    reader = PdfReader(file)
+    text = ""
+    for i, page in enumerate(reader.pages):
+        page_text = page.extract_text()
+        if page_text:
+            text += f"\n[Page {i+1}]\n{page_text}"
+    return text
+
+def extract_text_from_word(file):
+    doc = Document(file)
+    return "\n".join(p.text for p in doc.paragraphs)
+
 def read_text(file):
     if file.type == "text/plain":
-        return file.read().decode("utf-8")
+        return extract_text_from_txt(file)
 
     if file.type == "application/pdf":
-        from pypdf import PdfReader
-        reader = PdfReader(file)
-        text = ""
-        for i, page in enumerate(reader.pages):
-            text += f"\n[Page {i+1}]\n"
-            text += page.extract_text()
-        return text
+        return extract_text_from_pdf(file)
 
     if file.type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+        return extract_text_from_word(file)
 
-from docx import Document
+    return ""
 
-def extract_text_from_word(uploaded_file):
-    doc = Document(uploaded_file)
-    full_text = []
-    for para in doc.paragraphs:
-        full_text.append(para.text)
-    return "\n".join(full_text)
-
-        
-text = "This is a simple test document with typo and English word like machine learning."
-if uploaded_file:
-    text = extract_text_from_word(uploaded_file)
-    st.subheader("DEBUG: Extracted Text Preview")
-    st.text_area("", text[:3000], height=200)
-    st.write("Total characters:", len(text))
-
-chunks = split_text(text)
-st.write("Total chunks:", len(chunks))
-st.write("First chunk length:", len(chunks[0]))
-
-from openai import OpenAI
-client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
-
+# =========================
+# TEXT SPLITTER
+# =========================
 def split_text(text, max_chars=2000):
     chunks = []
     current = ""
+
     for line in text.split("\n"):
-        if len(current) + len(line) < max_chars:
+        if len(current) + len(line) <= max_chars:
             current += line + "\n"
         else:
             chunks.append(current)
             current = line + "\n"
-    if current:
+
+    if current.strip():
         chunks.append(current)
+
     return chunks
 
+# =========================
+# PROMPT
+# =========================
 REVIEW_PROMPT = """
 You are a professional document reviewer.
 
@@ -82,9 +92,9 @@ For each issue:
 - Be concise and professional
 """
 
-import time
-from openai import RateLimitError
-
+# =========================
+# AI REVIEW FUNCTION
+# =========================
 def ai_review(text):
     chunks = split_text(text)
     reports = []
@@ -109,12 +119,27 @@ def ai_review(text):
         else:
             reports.append(f"=== CHUNK {i+1} ===\n{content}")
 
+        time.sleep(0.5)  # avoid rate limit
+
     return "\n\n".join(reports)
 
-
+# =========================
+# UI FLOW
+# =========================
 if uploaded_file:
+    text = read_text(uploaded_file)
+
+    st.subheader("DEBUG: Extracted Text Preview")
+    st.text_area("", text[:3000], height=200)
+    st.write("Total characters:", len(text))
+
+    chunks = split_text(text)
+    st.write("Total chunks:", len(chunks))
+    st.write("First chunk length:", len(chunks[0]) if chunks else 0)
+
     if st.button("Generate Review Report"):
         with st.spinner("AI is reviewing the document..."):
             report = ai_review(text)
-            st.subheader("AI Review Report")
-            st.text_area("", report, height=500)
+
+        st.subheader("AI Review Report")
+        st.text_area("", report, height=500)
